@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Gmail API Quickstart</title>
+    <meta charset='utf-8' />
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+
+    <!-- jQuery library -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+
+    <!-- Latest compiled JavaScript -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <style>
+          .hidden{ display: none; }
+
+    </style>
+    <style>
+      iframe {
+        width: 100%;
+        border: 0;
+        min-height: 80%;
+        height: 600px;
+        display: flex;
+      }
+    </style>
+  </head>
+  <body>
+   <div class="container">
+    <p>Gmail API Quickstart!</p>
+
+    <!--Add buttons to initiate auth sequence and sign out-->
+    <button id="authorize-button" style="display: none;">Authorize</button>
+    <button id="signout-button" style="display: none;">Sign Out</button>
+    <a href="#compose-modal"
+        data-toggle="modal"
+        id="compose-button"
+        class="btn btn-primary pull-right hidden">Compose</a>
+
+    <table class="table table-striped table-inbox hidden">
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Subject</th>
+            <th>Date/Time</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="modal fade" id="compose-modal" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+            <h4 class="modal-title">Compose</h4>
+          </div>
+          <form onsubmit="return sendEmailWithAttachments();">
+            <div class="modal-body">
+              <div class="form-group">
+                <input type="email" class="form-control" id="compose-to" placeholder="To" required />
+              </div>
+
+              <div class="form-group">
+                <input type="text" class="form-control" id="compose-subject" placeholder="Subject" required />
+              </div>
+
+              <div class="form-group">
+                <textarea class="form-control" id="compose-message" placeholder="Message" rows="10" required></textarea>
+                <p id="demo"></p>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+              <button type="submit" id="send-button" class="btn btn-primary">Send</button>
+              <input type="file" id="myFile" multiple size="50" onchange="uploadFiles()">
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <pre id="content"></pre>
+
+
+    <script type="text/javascript">
+      // Client ID and API key from the Developer Console
+      var CLIENT_ID = '115405402898-ul743adn5en2i1cgvpkk20pqqd5api1t.apps.googleusercontent.com';
+
+      // Array of API discovery doc URLs for APIs used by the quickstart
+      var DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"];
+
+      // Authorization scopes required by the API; multiple scopes can be
+      // included, separated by spaces.
+      var SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
+
+      var authorizeButton = document.getElementById('authorize-button');
+      var signoutButton = document.getElementById('signout-button');
+
+      var att;
+      /**
+       *  On load, called to load the auth2 library and API client library.
+       */
+      function handleClientLoad() {
+        gapi.load('client:auth2', initClient);
+      }
+
+      /**
+       *  Initializes the API client library and sets up sign-in state
+       *  listeners.
+       */
+      function initClient() {
+        gapi.client.init({
+          discoveryDocs: DISCOVERY_DOCS,
+          clientId: CLIENT_ID,
+          scope: SCOPES
+        }).then(function () {
+          // Listen for sign-in state changes.
+          gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
+
+          // Handle the initial sign-in state.
+          updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
+          authorizeButton.onclick = handleAuthClick;
+          signoutButton.onclick = handleSignoutClick;
+        });
+      }
+
+      /**
+       *  Called when the signed in status changes, to update the UI
+       *  appropriately. After a sign-in, the API is called.
+       */
+      function updateSigninStatus(isSignedIn) {
+        if (isSignedIn) {
+          authorizeButton.style.display = 'none';
+          signoutButton.style.display = 'block';
+          $('#compose-button').removeClass("hidden");
+          $('.table-inbox').removeClass("hidden");
+          //----------------------------------------------ADD MORE FEATURES HERE
+          displayInbox();
+        } else {
+          authorizeButton.style.display = 'block';
+          signoutButton.style.display = 'none';
+        }
+      }
+
+      /**
+       *  Sign in the user upon button click.
+       */
+      function handleAuthClick(event) {
+        gapi.auth2.getAuthInstance().signIn();
+      }
+
+      /**
+       *  Sign out the user upon button click.
+       */
+      function handleSignoutClick(event) {
+        gapi.auth2.getAuthInstance().signOut();
+      }
+
+
+      function displayInbox() {
+        var request = gapi.client.gmail.users.messages.list({
+          'userId': 'me',
+          'labelIds': 'INBOX',
+          'maxResults': 10
+        });
+
+        request.execute(function(response) {
+          $.each(response.messages, function() {
+            var messageRequest = gapi.client.gmail.users.messages.get({
+              'userId': 'me',
+              'id': this.id
+            });
+
+            messageRequest.execute(appendMessageRow);
+          });
+        });
+      }
+
+      function appendMessageRow(message) {
+        $('.table-inbox tbody').append(
+          '<tr>\
+            <td>'+getHeader(message.payload.headers, 'From')+'</td>\
+            <td>\
+              <a href="#message-modal-' + message.id +
+                '" data-toggle="modal" id="message-link-' + message.id+'">' +
+                getHeader(message.payload.headers, 'Subject') +
+              '</a>\
+            </td>\
+            <td>'+getHeader(message.payload.headers, 'Date')+'</td>\
+          </tr>'
+        );
+
+        $('body').append(
+          '<div class="modal fade" id="message-modal-' + message.id +
+              '" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">\
+            <div class="modal-dialog modal-lg">\
+              <div class="modal-content">\
+                <div class="modal-header">\
+                  <button type="button"\
+                          class="close"\
+                          data-dismiss="modal"\
+                          aria-label="Close">\
+                    <span aria-hidden="true">&times;</span></button>\
+                  <h4 class="modal-title" id="myModalLabel">' +
+                    getHeader(message.payload.headers, 'Subject') +
+                  '</h4>\
+                </div>\
+                <div class="modal-body">\
+                  <iframe id="message-iframe-'+message.id+'" srcdoc="<p>Loading...</p>">\
+                  </iframe>\
+                </div>\
+              </div>\
+            </div>\
+          </div>'
+        );
+
+        $('#message-link-'+message.id).on('click', function(){
+          var ifrm = $('#message-iframe-'+message.id)[0].contentWindow.document;
+          if (ifrm) {
+            $('body', ifrm).html(getBody(message.payload));
+          }
+          else {
+            alert('Wonder what browser this is...'+navigator.userAgent);
+          }
+        });
+      }
+
+      function getHeader(headers, index) {
+        var header = '';
+        $.each(headers, function(){
+          if(this.name === index){
+            header = this.value;
+          }
+        });
+        return header;
+      }
+
+      function getBody(message) {
+        var encodedBody = '';
+        if(typeof message.parts === 'undefined')
+        {
+          encodedBody = message.body.data;
+        }
+        else
+        {
+          encodedBody = getHTMLPart(message.parts);
+        }
+        encodedBody = encodedBody.replace(/-/g, '+').replace(/_/g, '/').replace(/\s/g, '');
+        return decodeURIComponent(escape(window.atob(encodedBody)));
+      }
+
+      function getHTMLPart(arr) {
+        for(var x = 0; x <= arr.length; x++)
+        {
+          if(typeof arr[x].parts === 'undefined')
+          {
+            if(arr[x].mimeType === 'text/html')
+            {
+              return arr[x].body.data;
+            }
+          }
+          else
+          {
+            return getHTMLPart(arr[x].parts);
+          }
+        }
+        return '';
+      }
+
+    function sendEmailWithAttachments() {
+      $('#send-button').addClass('disabled');
+
+      var message = {
+        to: 
+          $('#compose-to').val(),
+/*        from: {
+          name: "Amit Agarwal",
+          email: "amit@labnol.org"
+        },*/
+        body: {
+          text: $('#compose-message').val(),
+        },
+        subject: $('#compose-subject').val(),
+        files: att
+      };
+      
+      // Compose Gmail message and send immediately
+      // callGmailAPI_(message, composeTidy);
+      callAwsAPI_(message, composeTidy);
+      alert('Message came back from parsing');
+
+    }
+
+    function callGmailAPI_(message, callback) {
+      window.prompt("are you sure","defaultText");
+      var message = createMimeMessage_(message);
+
+      var headers = getClientRequestHeaders();
+      var path = "gmail/v1/users/me/messages/send?key=" + CLIENT_ID;
+
+      alert("before decode : " + message);
+
+      var base64EncodedEmail = btoa(message).replace(/\+/g, '-').replace(/\//g, '_');
+
+      alert("the mail " + base64EncodedEmail);
+
+      gapi.client.request({
+          path: path,
+          method: "POST",
+          headers: headers,
+          body: {
+              'raw': base64EncodedEmail
+          }
+      }).then(function (response) {
+          response.execute(callback);
+      });
+
+
+      alert('Message sent!!!!!!!!!!!!!!!');
+
+    }
+
+    var t = null;
+    function getClientRequestHeaders() {
+        if(!t) t = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
+        var a = "Bearer " + t;
+        alert('getAuthInstance' + t);
+        return {
+            "Authorization": a,
+            "X-JavaScript-User-Agent": "Google APIs Explorer"
+        };
+    }
+
+
+    // Create a MIME message that complies with RFC 2822
+    function createMimeMessage_(msg) {
+
+      var nl = "\r\n";
+      var boundary = " --find--file--data--here-- ";
+      var fileInfoBoundary = " --nextFileInfo-- ";
+      alert('started mime ' + msg.to );
+
+
+
+      var mimeBody = "";
+
+      
+      mimeBody +=   "To: "      + msg.to + nl;
+      // mimeBody +=   "From: "     + "king.meitar@gmail.com"
+      mimeBody +=   "Subject: " + msg.subject + nl; // takes care of accented characters
+
+      mimeBody +=   "Content-Type: multipart/alternative;" + nl;
+
+      // mimeBody +=   "Content-Type: text/plain; charset=UTF-8" + nl;
+      mimeBody +=   "MIME-Version: 1.0" + nl;
+     
+
+      mimeBody +=   nl + msg.body.text;
+
+      alert('files size : ' + msg.files.length);
+
+      for (var i = 0; i < msg.files.length; i++) {
+
+        var attachment = boundary + nl;
+          attachment += "Content-Type: " + msg.files[i].mimeType + ';' + fileInfoBoundary + "name='" + msg.files[i].fileName + "'" + fileInfoBoundary;
+          attachment += "Content-Disposition: attachment; filename='" + msg.files[i].fileName + "'" + fileInfoBoundary;
+          attachment += "Length: " + msg.files[i].length + fileInfoBoundary;
+          attachment += "Content-Transfer-Encoding: base64" + fileInfoBoundary + nl;
+          attachment +=  msg.files[i].bytes + fileInfoBoundary;
+        
+          alert("attach: " + attachment);
+          mimeBody += attachment;
+
+      }
+      return mimeBody;
+
+    }
+
+    function composeTidy()
+    {
+      $('#compose-modal').modal('hide');
+
+      $('#compose-to').val('');
+      $('#compose-subject').val('');
+      $('#compose-message').val('');
+
+      $('#send-button').removeClass('disabled');
+    }
+
+ /*   function sendEmail() {
+      $('#send-button').addClass('disabled');
+
+      sendMessage(
+        {
+          'To': $('#compose-to').val(),
+          'Subject': $('#compose-subject').val()
+        },
+        $('#compose-message').val(),
+        composeTidy
+      );
+
+      return false;
+    }
+
+    function sendMessage(headers_obj, message, callback) {
+      var email = '';
+
+      for(var header in headers_obj)
+        email += header += ": "+headers_obj[header]+"\r\n";
+
+      email += "\r\n" + message;
+      //---------------------------------------------------------------ADDING MSG INFO ^^^^
+      var sendRequest = gapi.client.gmail.users.messages.send({
+        'userId': 'me',
+        'resource': {
+          'raw': window.btoa(email).replace(/\+/g, '-').replace(/\//g, '_')
+        }
+      });
+
+      return sendRequest.execute(callback);
+    }
+
+*/
+
+    function uploadFiles(){
+      att = [];
+      var x = document.getElementById("myFile");
+      var txt = "";
+      if ('files' in x) {
+          if (x.files.length == 0) {
+              txt = "Select one or more files.";
+          } else {
+              for (var i = 0; i < x.files.length; i++) {
+                  txt += "<br><strong>" + (i+1) + ". file</strong><br>";
+                  var file = x.files[i];
+
+                  // Pass the file to the blob, not the input[0].
+                  fileData = new Blob([file]);
+                  // Pass getBuffer to promise.
+                  var promise = new Promise(getBuffer);
+                  // Wait for promise to be resolved, or log error.
+                  promise.then(function(data) {
+                    alert(data.toString());
+                     att.push({
+                        mimeType: file.type,
+                        fileName: file.name,
+                        length: data.length,
+                        bytes: data.toString()
+                    });
+                  }).catch(function(err) {
+                    console.log('Error: ',err);
+                  });
+
+                  if ('name' in file) {
+                      txt += "name: " + file.name + "<br>"; 
+                  }
+                  if ('size' in file) {
+                      txt += "size: " + file.size + " bytes <br>";
+                  }
+              }
+          }
+      }
+      else {
+          if (x.value == "") {
+              txt += "Select one or more files.";
+          } else {
+              txt += "The files property is not supported by your browser!";
+              txt  += "<br>The path of the selected file: " + x.value; // If the browser does not support the files property, it will return the path of the selected file instead.
+          }
+      }
+      document.getElementById("demo").innerHTML = txt;
+      return att;
+    }
+
+    function getBuffer(resolve) {
+      var reader = new FileReader();
+      reader.readAsDataURL(fileData);
+      reader.onload = function() {
+        var base64Data = reader.result
+        console.log(base64Data);
+        resolve(base64Data);
+      }
+    }
+
+    function callAwsAPI_(message, callback) {
+      window.prompt("are you sure","defaultText");
+      var payload = createMimeMessage_(message);
+
+      var http = new XMLHttpRequest();
+      var url = "https://t74yc7dizk.execute-api.us-west-2.amazonaws.com/Stream/file";
+      http.open("POST", url, true);
+
+      //Send the proper header information along with the request
+      http.setRequestHeader("Content-type", "application/json");
+
+      http.onreadystatechange = function() {//Call a function when the state changes.
+          alert(http.responseText);
+      }
+
+      http.send({"data" : payload});
+
+      alert('AWS sent!!!!!!!!!!!!!!!');
+    }
+
+    </script>
+
+    <script async defer src="https://apis.google.com/js/api.js"
+      onload="this.onload=function(){};handleClientLoad()"
+      onreadystatechange="if (this.readyState === 'complete') this.onload()">
+    </script>
+  </body>
+</html>
